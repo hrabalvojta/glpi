@@ -1,0 +1,67 @@
+FROM php:fpm-alpine
+
+LABEL \
+    org.opencontainers.image.title="GLPI" \
+    org.opencontainers.image.description="This container contains PHP-FPM." \
+    org.opencontainers.image.url="https://github.com/hrabalvojta/glpi" \
+    org.opencontainers.image.source="git@github.com:glpi-hrabalvojta/glpi"
+
+ENV GLPI_VERSION="10.0.10" \
+    GLPI_DEST="/var/www/glpi" \
+    # Remove AVIF support -> compiling libavif -> gd
+    IPE_GD_WITHOUTAVIF=1 \
+    # ICU library -> EN only -> intl
+    IPE_ICU_EN_ONLY=1
+ENV GLPI_FILE="${GLPI_DEST}/glpi-${GLPI_VERSION}.tgz" \
+    GLPI_URL="https://github.com/glpi-project/glpi/releases/download/${GLPI_VERSION}/glpi-${GLPI_VERSION}.tgz"
+
+### Already present
+# dom, fileinfo, filter, libxml, json, SimpleXML, xmlreader, xmlwriter, curl, session, zlib, Phar, openssl
+### To be installed
+# gd, intl, mysqli, bz2, exif, ldap, Zend OPcache, zip, redis, apcu, xmlrpc
+
+WORKDIR /var/www/glpi
+
+RUN \
+    # Download and extact GLPI
+    curl -L -o ${GLPI_FILE} ${GLPI_URL} && \
+    tar -xf ${GLPI_FILE} -C ${GLPI_DEST} --strip-components=1 && \
+    rm -rf ${GLPI_FILE} && \
+    chown -R www-data:www-data ${GLPI_DEST} && \
+    # Use default PHP config    
+    mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini" && \
+    # User all available cores to PECL INSTALL
+    export MAKEFLAGS="-j $(nproc)" && \
+    # Install dependent packages
+    apk add --update --no-cache zlib libpng icu bzip2 bzip2-dev libldap libzip \
+        freetype-dev libjpeg-turbo-dev libpng-dev libwebp-dev libxml2-dev && \
+    # Install build packages
+    apk add --no-cache --virtual .php-build-dependancies \
+        openldap-dev zlib-dev libpng-dev icu-dev libzip-dev $PHPIZE_DEPS && \
+    # Configure GD for support of more formats
+    docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp && \
+    # Install extensions
+    docker-php-ext-install -j$(nproc) gd intl mysqli bz2 exif ldap opcache zip && \
+    # Install extensions from pecl
+    pecl install redis apcu && \
+    # Instal "beta" version of package
+    pecl config-set preferred_state beta && \
+    pecl install xmlrpc && \
+    # After PECL installation enable
+    docker-php-ext-enable redis apcu && \
+    # Remove build packages
+    apk del .php-build-dependancies && \
+    # PHP Configurations
+    echo "apc.enable=1" >> /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini && \
+    echo "apc.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini && \
+    echo "apc.shm_size=512M" >> /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini && \
+    echo "memory_limit = 1024M" >> /usr/local/etc/php/conf.d/docker-php-memory.ini && \
+    sed -i 's/session\.cookie_httponly =/session\.cookie_httponly = on/g' \
+        /usr/local/etc/php/php.ini && \
+    # Check php is working
+    php -m 
+
+# Start php-fpm -F foreground pid 1 -R #start as root
+CMD php-fpm -F
+    
+

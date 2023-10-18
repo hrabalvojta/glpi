@@ -1,0 +1,43 @@
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glpi-db-init
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-db-init
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: job
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  template:
+    spec:
+      containers:
+        - name: glpi-init
+          image: hrabalvojta/glpi-php:latest
+          command: ["/bin/sh", "-c", "/var/www/glpi/config/job-init.sh"]
+          volumeMounts:
+            - name: glpi-appconf-volume
+              mountPath: /var/www/glpi/config
+              readOnly: true
+      restartPolicy: Never
+      volumes:
+        - name: glpi-appconf-volume
+          projected:
+            sources:
+              - configMap: 
+                  name: glpi-app-configmap
+                  items:
+                    - key: .htaccess
+                      path: .htaccess
+                    - key: cache.php
+                      path: cache.php
+                    - key: job-init.sh
+                      path: job-init.sh
+                      defaultMode: 493
+              - secret: 
+                  name: glpi-app-secret
+                  items:
+                    - key: config_db.php
+                      path: config_db.php

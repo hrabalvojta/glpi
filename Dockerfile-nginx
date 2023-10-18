@@ -1,0 +1,23 @@
+FROM nginxinc/nginx-unprivileged:alpine
+
+LABEL \
+    org.opencontainers.image.title="GLPI" \
+    org.opencontainers.image.description="This container contains NGINX." \
+    org.opencontainers.image.url="https://github.com/hrabalvojta/glpi" \
+    org.opencontainers.image.source="git@github.com:glpi-hrabalvojta/glpi"
+
+ENV GLPI_VERSION="10.0.10" \
+    GLPI_DEST="/var/www/glpi"
+ENV GLPI_FILE="${GLPI_DEST}/glpi-${GLPI_VERSION}.tgz" \
+    GLPI_URL="https://github.com/glpi-project/glpi/releases/download/${GLPI_VERSION}/glpi-${GLPI_VERSION}.tgz"
+
+WORKDIR ${GLPI_DEST}
+
+RUN \
+    # Download and extact GLPI
+    curl -L -o ${GLPI_FILE} ${GLPI_URL} && \
+    tar -xf ${GLPI_FILE} -C ${GLPI_DEST} --strip-components=1 && \
+    rm -rf ${GLPI_FILE} && \
+    # Configure nginx
+    sed -i 's/\/var\/log\/nginx\/error\.log/\/dev\/stdout/g' /etc/nginx/nginx.conf && \
+    sed -i 's/\/var\/log\/nginx\/access\.log/\/dev\/stdout/g' /etc/nginx/nginx.conf

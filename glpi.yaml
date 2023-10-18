@@ -1,0 +1,484 @@
+---
+
+################################
+### Namespace
+################################
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: glpi
+
+---
+
+################################
+### PV & PVC
+################################
+
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: glpi-db-pvc
+#spec:
+#  accessModes:
+#    - ReadWriteMany
+#  resources:
+#    requests:
+#      storage: 2Gi
+
+---
+
+################################
+### ConfigMap & Secret
+################################
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: glpi-app-configmap
+  namespace: glpi
+data:                                                                                                                                                                               
+  .htaccess: |-   
+    <IfModule mod_authz_core.c>
+    Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+    deny from all
+    </IfModule>
+  cache.php: |-   
+    <?php
+    return array (
+      'contexts' =>
+      array (
+        'core' =>
+        array (
+          'dsn' => 'redis://glpi-redis-service:6379/0',
+          'options' =>
+          array (
+          ),
+        ),
+      ),
+    );
+  job-init.sh: |-
+    #!/bin/bash
+    php bin/console db:install --no-telemetry
+    php bin/console db:update --no-telemetry
+    php bin/console glpi:security:change_key
+    php bin/console cache:clear
+    php bin/console cache:configure --dsn redis://glpi-redis-service:6379/glpi
+    rm -rf install
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: glpi-web-config
+  namespace: glpi
+data:                                                                                                                                                                               
+  glpi.conf: |-                                                                                                                                                                                                     
+    server {                                                                                                                                                                                                    
+        listen 8080;                                                                                                                                                                                                  
+        listen [::]:8080;                                                                                                                                                                                             
+        server_name localhost;
+        root /var/www/glpi/public;
+        location / {
+            try_files $uri /index.php$is_args$args;
+        }
+        location ~ ^/index\.php$ {
+            fastcgi_pass glpi-php-fpm-service:9000;
+            fastcgi_split_path_info ^(.+\.php)(/.*)$;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        }
+    }
+
+---
+
+kind: Secret
+apiVersion: v1
+metadata:
+  name: glpi-app-secret
+  namespace: glpi
+type: Opaque
+data:
+  config_db.php: PD9waHAKY2xhc3MgREIgZXh0ZW5kcyBEQm15c3FsIHsKICAgcHVibGljICRkYmhvc3QgPSAnZ2xwaS1kYi1zZXJ2aWNlJzsKICAgcHVibGljICRkYnVzZXIgPSAnYWRtaW4nOwogICBwdWJsaWMgJGRicGFzc3dvcmQgPSAnYWRtaW4nOwogICBwdWJsaWMgJGRiZGVmYXVsdCA9ICdnbHBpJzsKICAgcHVibGljICR1c2VfdXRmOG1iNCA9IHRydWU7CiAgIHB1YmxpYyAkYWxsb3dfbXlpc2FtID0gZmFsc2U7CiAgIHB1YmxpYyAkYWxsb3dfZGF0ZXRpbWUgPSBmYWxzZTsKICAgcHVibGljICRhbGxvd19zaWduZWRfa2V5cyA9IGZhbHNlOwp9Cg==
+  #<?php
+  #class DB extends DBmysql {
+  #   public $dbhost = 'glpi-db-service';
+  #   public $dbuser = 'admin';
+  #   public $dbpassword = 'admin';
+  #   public $dbdefault = 'glpi';
+  #   public $use_utf8mb4 = true;
+  #   public $allow_myisam = false;
+  #   public $allow_datetime = false;
+  #   public $allow_signed_keys = false;
+  #}
+
+---
+
+kind: Secret
+apiVersion: v1
+metadata:
+  name: glpi-db-secret
+  namespace: glpi
+type: Opaque
+data:
+  db_username: YWRtaW4=
+  db_password: YWRtaW4=
+  db_root_password: YWRtaW4=
+
+---
+
+################################
+### Services & Ingresses
+################################
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: glpi-web-service
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-web
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: web
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  ports:
+  - name: http-web
+    protocol: TCP
+    port: 8080
+  selector:
+    app.kubernetes.io/name: glpi-web
+
+---
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: glpi-php-fpm-service
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-php-fpm
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: php
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  ports:
+  - name: php-fpm-port
+    protocol: TCP
+    port: 9000
+  selector:
+    app.kubernetes.io/name: glpi-php-fpm
+
+---
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: glpi-redis-service
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-redis
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  ports:
+  - name: redis
+    protocol: TCP
+    port: 6379
+  selector:
+    app.kubernetes.io/name: glpi-redis
+
+---
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: glpi-db-service
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-db
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: db
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  ports:
+  - name: db
+    protocol: TCP
+    port: 3306
+  selector:
+    app.kubernetes.io/name: glpi-db
+
+---
+
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: glpi-web-ingress
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-web
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: web
+    app.kubernetes.io/version: "v1.0.0"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: internal-ca
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - glpi.cluster.local
+      secretName: glpi-certs
+  rules:
+    - host: glpi.cluster.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: glpi-web-service
+                port:
+                  name: http-web
+
+---
+
+################################
+### Deployments
+################################
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: glpi-web
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-web
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: web
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: glpi-web
+      app.kubernetes.io/part-of: glpi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glpi-web
+        app.kubernetes.io/part-of: glpi
+        app.kubernetes.io/component: web
+        app.kubernetes.io/version: "v1.0.0"
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: glpi-web
+          image: hrabalvojta/glpi-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http-web
+              protocol: TCP
+              containerPort: 8080
+          volumeMounts:
+            - name: glpi-conf-volume
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: glpi-appconf-volume
+              mountPath: /var/www/glpi/config
+              readOnly: true
+      volumes:
+        - name: glpi-conf-volume
+          configMap: 
+            name: glpi-web-config
+            items:
+              - key: glpi.conf
+                path: glpi.conf
+        - name: glpi-appconf-volume
+          projected:
+            sources:
+              - configMap: 
+                  name: glpi-app-configmap
+                  items:
+                    - key: .htaccess
+                      path: .htaccess
+                    - key: cache.php
+                      path: cache.php
+              - secret: 
+                  name: glpi-app-secret
+                  items:
+                    - key: config_db.php
+                      path: config_db.php
+
+---
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: glpi-php-fpm
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-php-fpm
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: php
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: glpi-php-fpm
+      app.kubernetes.io/part-of: glpi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glpi-php-fpm
+        app.kubernetes.io/part-of: glpi
+        app.kubernetes.io/component: php
+        app.kubernetes.io/version: "v1.0.0"
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: glpi-php-fpm
+          image: hrabalvojta/glpi-php:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: php-fpm
+              protocol: TCP
+              containerPort: 9000
+          volumeMounts:
+            - name: glpi-appconf-volume
+              mountPath: /var/www/glpi/config
+              readOnly: true
+      volumes:
+        - name: glpi-appconf-volume
+          projected:
+            sources:
+              - configMap: 
+                  name: glpi-app-configmap
+                  items:
+                    - key: .htaccess
+                      path: .htaccess
+                    - key: cache.php
+                      path: cache.php
+              - secret: 
+                  name: glpi-app-secret
+                  items:
+                    - key: config_db.php
+                      path: config_db.php
+  
+---
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: glpi-redis
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-redis
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: glpi-redis
+      app.kubernetes.io/part-of: glpi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glpi-redis
+        app.kubernetes.io/part-of: glpi
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/version: "v1.0.0"
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: glpi-redis
+          image: eqalpha/keydb:alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: redis
+              protocol: TCP
+              containerPort: 6379
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: glpi-db
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-db
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: db
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  serviceName: "glpi-db"
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: glpi-db
+      app.kubernetes.io/part-of: glpi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glpi-db
+        app.kubernetes.io/part-of: glpi
+        app.kubernetes.io/component: db
+        app.kubernetes.io/version: "v1.0.0"
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: glpi-db
+          image: docker.io/mariadb:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: db
+              protocol: TCP
+              containerPort: 3306
+          env:
+            - name: MARIADB_DATABASE
+              value: glpi
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: glpi-db-secret
+                  key: db_root_password
+            - name: MARIADB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: glpi-db-secret
+                  key: db_username
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: glpi-db-secret
+                  key: db_root_password
+          volumeMounts:
+            - name: datadir
+              mountPath: /var/lib
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 300M
+
