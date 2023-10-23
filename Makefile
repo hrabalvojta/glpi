@@ -38,11 +38,11 @@ load:
 	kind load docker-image --name k8s localhost/php-fpm:latest
 
 push:
-	docker tag localhost/php-fpm docker.io/hrabalvojta/glpi-php
-	docker tag localhost/nginx-glpi docker.io/hrabalvojta/glpi-web
+	docker tag localhost/php-fpm:latest docker.io/hrabalvojta/glpi-php:latest
+	docker tag localhost/nginx-glpi:latest docker.io/hrabalvojta/glpi-web:latest
 	docker push docker.io/hrabalvojta/glpi-web:latest
 	docker push docker.io/hrabalvojta/glpi-php:latest
 
-all: build load
+all: build load push
 
 .PHONY: build clear clean load all

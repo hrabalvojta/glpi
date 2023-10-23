@@ -1,6 +1,33 @@
 ---
 
 apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: glpi-cronjob
+  namespace: glpi
+  labels:
+    app.kubernetes.io/name: glpi-cronjob
+    app.kubernetes.io/part-of: glpi
+    app.kubernetes.io/component: job
+    app.kubernetes.io/version: "v1.0.0"
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: glpi-cronjob
+            image: hrabalvojta/glpi-php:latest
+            imagePullPolicy: IfNotPresent
+            command:
+            - php
+            - front/cron.php
+          restartPolicy: OnFailure
+
+---
+
+apiVersion: batch/v1
 kind: Job
 metadata:
   name: glpi-db-init
@@ -16,7 +43,7 @@ spec:
       containers:
         - name: glpi-init
           image: hrabalvojta/glpi-php:latest
-          command: ["/bin/sh", "-c", "/var/www/glpi/config/job-init.sh"]
+          command: ["/bin/sh", "/var/www/glpi/config/job-init.sh"]
           volumeMounts:
             - name: glpi-appconf-volume
               mountPath: /var/www/glpi/config
@@ -35,7 +62,6 @@ spec:
                       path: cache.php
                     - key: job-init.sh
                       path: job-init.sh
-                      defaultMode: 493
               - secret: 
                   name: glpi-app-secret
                   items:

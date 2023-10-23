@@ -27,6 +27,8 @@ RUN \
     curl -L -o ${GLPI_FILE} ${GLPI_URL} && \
     tar -xf ${GLPI_FILE} -C ${GLPI_DEST} --strip-components=1 && \
     rm -rf ${GLPI_FILE} && \
+    curl -L -o config/job-init.sh https://raw.githubusercontent.com/hrabalvojta/glpi/main/config/job-init.sh && \
+    chmod +x config/job-init.sh && \
     chown -R www-data:www-data ${GLPI_DEST} && \
     # Use default PHP config    
     mv "$PHP_INI_DIR/php.ini-development" "$PHP_INI_DIR/php.ini" && \

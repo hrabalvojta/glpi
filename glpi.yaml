@@ -37,7 +37,7 @@ apiVersion: v1
 metadata:
   name: glpi-app-configmap
   namespace: glpi
-data:                                                                                                                                                                               
+data:
   .htaccess: |-   
     <IfModule mod_authz_core.c>
     Require all denied
@@ -52,13 +52,16 @@ data:
       array (
         'core' =>
         array (
-          'dsn' => 'redis://glpi-redis-service:6379/0',
+          'dsn' => 'redis://glpi-redis-service:6379/glpi',
           'options' =>
           array (
           ),
         ),
       ),
     );
+  db-init.sql: |-
+    GRANT SELECT ON `mysql`.`time_zone_name` TO 'admin'@'%';
+    FLUSH PRIVILEGES;
   job-init.sh: |-
     #!/bin/bash
     php bin/console db:install --no-telemetry
@@ -473,6 +476,16 @@ spec:
           volumeMounts:
             - name: datadir
               mountPath: /var/lib
+            - name: glpi-db-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: glpi-db-init
+          configMap: 
+            name: glpi-app-configmap
+            items:
+              - key: db-init.sql
+                path: db-init.sql
   volumeClaimTemplates:
   - metadata:
       name: datadir
